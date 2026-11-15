@@ -64,18 +64,55 @@ h2{font-size:17px;margin:0 0 14px}.field{margin-bottom:12px}.field label{display
 <section id="category" class="hidden">
  <div class="panel"><h2>카테고리별 옷장</h2><div class="grid" id="categoryButtons"></div></div>
 </section>
+<section id="backup" class="hidden">
+ <div class="panel">
+  <h2>앱 잠금</h2>
+  <p style="font-size:13px;line-height:1.7;color:var(--muted)">6자리 비밀번호를 설정하면 이 브라우저에서 MY CLOSET을 열 때 비밀번호를 입력해야 합니다. 일반적인 사생활 보호용 잠금이며, 기기 자체의 암호화나 강력한 보안 기능을 대신하지는 않습니다.</p>
+  <button class="secondary" id="changePin">비밀번호 설정 / 변경</button>
+ </div>
+ <div class="panel">
+  <h2>옷장 백업</h2>
+  <p style="font-size:13px;line-height:1.7;color:var(--muted)">사진과 옷 정보를 백업 파일 하나로 저장합니다. 백업 파일은 개인 파일이므로 다른 사람과 공유하지 말고 iCloud Drive 등 안전한 곳에 보관하세요.</p>
+  <button class="primary" id="exportBackup">백업 파일 만들기</button>
+  <div class="field" style="margin-top:14px"><label>백업 파일에서 복원</label><input id="importBackup" type="file" accept=".json,application/json"></div>
+  <p class="note">복원하면 현재 옷장 내용이 백업 파일의 내용으로 교체됩니다. 복원 전에 현재 옷장도 백업해 주세요.</p>
+ </div>
+</section>
 </main>
-<nav><button id="homeTab" class="active">옷장</button><button id="categoryTab">카테고리</button><button id="addTab">＋ 옷 등록</button></nav>
+<div id="lockScreen" style="position:fixed;inset:0;background:var(--bg);z-index:20;display:flex;align-items:center;justify-content:center;padding:24px">
+ <div class="panel" style="width:100%;max-width:420px">
+  <div class="brand" style="margin-bottom:8px">MY CLOSET</div>
+  <h2 id="lockTitle">비밀번호 설정</h2>
+  <p id="lockMessage" style="font-size:13px;line-height:1.7;color:var(--muted)">나만의 옷장을 보호할 6자리 숫자를 설정해 주세요.</p>
+  <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="숫자 6자리" autocomplete="off">
+  <input id="pinConfirm" class="hidden" type="password" inputmode="numeric" maxlength="6" placeholder="비밀번호 다시 입력" autocomplete="off" style="margin-top:10px">
+  <button class="primary" id="pinAction" style="margin-top:12px">계속</button>
+  <p class="note">비밀번호를 잊으면 앱 안에서 복구할 수 없습니다. 안전한 곳에 기억해 두세요.</p>
+ </div>
+</div>
+<nav><button id="homeTab" class="active">옷장</button><button id="categoryTab">카테고리</button><button id="addTab">＋ 옷 등록</button><button id="backupTab">보안·백업</button></nav>
 <script>
 const DB='mycloset-local-v1', STORE='clothes';let db,photoBlob=null,activeColor='';
 const colors=['전체','검정','흰색','회색','베이지','갈색','빨강','주황','노랑','초록','파랑','보라','분홍','기타'];
 const categories=['상의','하의','원피스','아우터','신발','가방','액세서리'];
+const PIN_KEY='mycloset-pin-v1';
+const $=id=>document.getElementById(id);
+function bytesToHex(buf){return [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function pinHash(pin,salt){return bytesToHex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(salt+pin)))}
+function showLock(setup=false){$('lockScreen').style.display='flex';$('pinConfirm').classList.toggle('hidden',!setup);$('lockTitle').textContent=setup?'비밀번호 설정':'MY CLOSET 잠금';$('lockMessage').textContent=setup?'나만의 옷장을 보호할 6자리 숫자를 설정해 주세요.':'계속하려면 6자리 비밀번호를 입력해 주세요.';$('pinInput').value='';$('pinConfirm').value='';$('pinAction').textContent=setup?'비밀번호 저장':'잠금 해제';$('pinAction').dataset.mode=setup?'setup':'unlock'}
+async function initPin(){const saved=localStorage.getItem(PIN_KEY);showLock(!saved)}
+$('pinAction').onclick=async()=>{const pin=$('pinInput').value, mode=$('pinAction').dataset.mode;if(!/^\d{6}$/.test(pin)){alert('숫자 6자리를 입력해 주세요.');return}if(mode==='setup'){if(pin!==$('pinConfirm').value){alert('두 비밀번호가 일치하지 않아요.');return}const salt=bytesToHex(crypto.getRandomValues(new Uint8Array(16)));localStorage.setItem(PIN_KEY,JSON.stringify({salt,hash:await pinHash(pin,salt)}));$('lockScreen').style.display='none';return}const saved=JSON.parse(localStorage.getItem(PIN_KEY)||'null');if(saved&&await pinHash(pin,saved.salt)===saved.hash){$('lockScreen').style.display='none'}else{alert('비밀번호가 맞지 않아요.')}};
+$('changePin').onclick=()=>{if(confirm('새 비밀번호를 설정할까요? 현재 비밀번호를 확인한 뒤 변경하는 방식은 지원하지 않습니다. 기기를 다른 사람이 사용 중이지 않은지 확인해 주세요.'))showLock(true)};
+function blobToDataURL(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob)})}
+function dataURLToBlob(data){const [head,b64]=data.split(',');const mime=(head.match(/data:(.*?);/)||[])[1]||'image/jpeg';const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type:mime})}
+$('exportBackup').onclick=async()=>{try{const items=await all();const payload={app:'MY CLOSET',version:1,created:new Date().toISOString(),items:await Promise.all(items.map(async x=>({...x,photo:await blobToDataURL(x.photo)})))};const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='my-closet-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);alert('백업 파일을 만들었어요. 파일 앱의 다운로드 폴더를 확인해 주세요.')}catch(e){alert('백업에 실패했어요: '+e.message)}};
+$('importBackup').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(!confirm('복원하면 현재 옷장 내용이 백업 파일 내용으로 교체됩니다. 먼저 현재 옷장을 백업했나요?')){e.target.value='';return}try{const payload=JSON.parse(await file.text());if(payload.app!=='MY CLOSET'||!Array.isArray(payload.items))throw new Error('MY CLOSET 백업 파일이 아닙니다.');const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);store.clear();for(const x of payload.items){store.add({...x,photo:dataURLToBlob(x.photo)})}tx.oncomplete=()=>{alert('옷장 복원이 완료됐어요.');e.target.value='';show('home')};tx.onerror=()=>alert('복원 중 오류가 발생했어요.')}catch(err){alert('복원할 수 없어요: '+err.message);e.target.value=''}};
 function openDB(){return new Promise((res,rej)=>{let r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});r.onsuccess=()=>{db=r.result;res()};r.onerror=()=>rej(r.error)})}
 function all(){return new Promise((res,rej)=>{let r=db.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 function put(v){return new Promise((res,rej)=>{let r=db.transaction(STORE,'readwrite').objectStore(STORE).add(v);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
 function remove(id){return new Promise((res,rej)=>{let r=db.transaction(STORE,'readwrite').objectStore(STORE).delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-function show(which){['home','add','category'].forEach(x=>document.getElementById(x).classList.toggle('hidden',x!==which));['homeTab','addTab','categoryTab'].forEach(x=>document.getElementById(x).classList.toggle('active',x===which+'Tab'));if(which==='home')render()}
-document.getElementById('homeTab').onclick=()=>show('home');document.getElementById('addTab').onclick=()=>show('add');document.getElementById('categoryTab').onclick=()=>show('category');
+function show(which){['home','add','category','backup'].forEach(x=>document.getElementById(x).classList.toggle('hidden',x!==which));['homeTab','addTab','categoryTab','backupTab'].forEach(x=>document.getElementById(x).classList.toggle('active',x===which+'Tab'));if(which==='home')render()}
+document.getElementById('homeTab').onclick=()=>show('home');document.getElementById('addTab').onclick=()=>show('add');document.getElementById('categoryTab').onclick=()=>show('category');document.getElementById('backupTab').onclick=()=>show('backup');
 document.getElementById('photo').onchange=e=>{let f=e.target.files[0];if(!f)return;photoBlob=f;let u=URL.createObjectURL(f),p=document.getElementById('preview');p.src=u;p.classList.remove('hidden')};
 document.getElementById('save').onclick=async()=>{if(!photoBlob){alert('옷 사진을 먼저 선택해 주세요.');return}let name=document.getElementById('name').value.trim()||document.getElementById('category').value;await put({photo:photoBlob,name,category:document.getElementById('category').value,color:document.getElementById('color').value,season:document.getElementById('season').value,created:Date.now()});photoBlob=null;document.getElementById('photo').value='';document.getElementById('name').value='';document.getElementById('preview').classList.add('hidden');alert('옷장에 저장했어요!');show('home')};
 function renderColorFilters(){let el=document.getElementById('colorFilters');el.innerHTML='';colors.forEach(c=>{let b=document.createElement('button');b.className='colorchip'+((c==='전체'&&!activeColor)||(c===activeColor)?' selected':'');b.textContent=c;b.onclick=()=>{activeColor=c==='전체'?'':c;render()};el.append(b)})}
@@ -83,7 +120,7 @@ async function render(){let data=await all(),q=document.getElementById('search')
 document.getElementById('search').oninput=render;document.getElementById('catFilter').onchange=render;document.getElementById('seasonFilter').onchange=render;
 document.getElementById('categoryButtons').innerHTML=categories.map(c=>`<button class="secondary" style="min-height:64px" data-cat="${c}">${c}</button>`).join('');
 document.getElementById('categoryButtons').onclick=e=>{let c=e.target.dataset.cat;if(c){document.getElementById('catFilter').value=c;show('home')}};
-openDB().then(render).catch(()=>alert('이 브라우저에서 저장공간을 열 수 없어요. Safari에서 다시 열어 주세요.'));
+openDB().then(async()=>{await initPin();await render()}).catch(()=>alert('이 브라우저에서 저장공간을 열 수 없어요. Safari에서 다시 열어 주세요.'));
 </script>
 <script>if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {})); }</script>
 </body></html>
