@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f0e8">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>MY CLOSET</title>
+<style>
+:root{--bg:#f7f4ee;--card:#fffdf9;--ink:#39352f;--muted:#8d857a;--line:#e9e2d8;--accent:#b69b7c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif}
+header{padding:22px 16px 14px;position:sticky;top:0;background:rgba(247,244,238,.97);backdrop-filter:blur(12px);z-index:5;border-bottom:1px solid var(--line)}
+.brand{font-family:Georgia,serif;letter-spacing:3px;font-size:23px}
+.sub{font-size:10px;color:var(--muted);letter-spacing:1.5px;margin-top:4px}
+main{padding:15px 12px 100px;max-width:900px;margin:auto}
+.topline{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:2px 2px 12px}
+.topline strong{font-size:19px}.topline span{font-size:12px;color:var(--muted)}
+button,input{font:inherit}button{cursor:pointer;touch-action:manipulation}
+.btn{border:0;border-radius:11px;padding:10px 12px;background:#eee7dc;color:var(--ink);font-size:13px}
+.btn.dark{background:var(--ink);color:white}.btn:disabled{opacity:.45}
+.folderbar{display:flex;gap:7px;overflow-x:auto;padding:2px 1px 11px;margin-bottom:8px;scrollbar-width:thin}
+.folder{white-space:nowrap;border:1px solid var(--line);border-radius:99px;padding:8px 12px;background:var(--card);font-size:12px;color:var(--muted)}
+.folder.active{background:#e9dfd1;border-color:var(--accent);color:var(--ink);font-weight:700}
+.folder.drop-target{outline:3px solid var(--accent);background:#e9dfd1}
+.actions{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.actions input{flex:1;min-width:120px}
+input{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px;color:var(--ink);min-width:0}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.item{position:relative;aspect-ratio:1/1;background:var(--card);border:1px solid var(--line);border-radius:9px;overflow:hidden;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.item img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.item.selected{outline:3px solid var(--accent);outline-offset:-3px}
+.item input{position:absolute;top:5px;left:5px;width:22px;height:22px;margin:0;accent-color:#8b7358;z-index:2}
+.item.dragging{opacity:.35;outline:3px dashed var(--accent)}
+.drag-hint{position:fixed;z-index:50;pointer-events:none;padding:9px 13px;background:rgba(57,53,47,.92);color:white;border-radius:10px;font-size:13px;transform:translate(-50%,-130%);display:none;white-space:nowrap}
+.empty{grid-column:1/-1;text-align:center;padding:45px 15px;color:var(--muted);background:var(--card);border:1px dashed var(--line);border-radius:15px;line-height:1.8;font-size:13px}
+.note{font-size:11px;color:var(--muted);line-height:1.6;margin:10px 2px}
+.hidden{display:none!important}
+.modal{position:fixed;inset:0;background:rgba(25,22,19,.94);z-index:20;display:flex;align-items:center;justify-content:center;padding:18px}
+.modal img{max-width:100%;max-height:82vh;object-fit:contain}
+.modal .close{position:absolute;right:16px;top:calc(12px + env(safe-area-inset-top));background:rgba(255,255,255,.18);color:white;border:0;border-radius:50%;width:42px;height:42px;font-size:24px}
+.modal .caption{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom));color:white;font-size:12px}
+#photo{display:none}
+#backup{margin-top:22px;padding-top:12px;border-top:1px solid var(--line)}
+@media(min-width:600px){main{padding-left:18px;padding-right:18px}.grid{grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}}
+</style>
+</head>
+<body>
+<header><div class="brand">MY CLOSET</div><div class="sub">YOUR PERSONAL PHOTO LIBRARY</div></header>
+<main>
+  <div class="topline"><div><strong id="count">0</strong> <span>장의 사진</span></div><span id="folderTitle">전체 사진</span></div>
+  <div class="folderbar" id="folders"></div>
+  <div class="actions">
+    <button class="btn dark" id="addFolder">＋ 폴더</button>
+    <button class="btn" id="renameFolder">이름 변경</button>
+    <button class="btn dark" id="chooseFiles">＋ 여러 장 사진 추가</button>
+    <input id="search" placeholder="사진 검색" aria-label="사진 검색">
+    <input id="photo" type="file" accept="image/*" multiple>
+  </div>
+  <div class="actions">
+    <button class="btn" id="selectAll">전체 선택</button>
+    <button class="btn" id="moveSelected" disabled>선택 사진 이동</button>
+    <button class="btn" id="cancelSelect">선택 해제</button>
+  </div>
+  <div class="grid" id="items"></div>
+  <p class="note">아이폰에서는 사진을 손가락으로 0.4초 정도 길게 누른 뒤, 원하는 폴더 위로 끌어 놓으세요. 여러 장은 체크한 뒤 ‘선택 사진 이동’을 눌러 옮길 수 있어요. 사진은 기존 MY CLOSET 저장공간을 그대로 사용합니다.</p>
+  <section id="backup">
+    <div class="actions">
+      <button class="btn" id="exportBackup">백업 파일 만들기</button>
+      <label class="btn" for="importBackup">백업에서 복원</label>
+      <input id="importBackup" class="hidden" type="file" accept=".json,application/json">
+    </div>
+    <p class="note">복원하면 현재 저장 내용이 교체되므로, 복원 전에 현재 내용을 먼저 백업하세요.</p>
+  </section>
+</main>
+<div id="viewer" class="modal hidden"><button class="close" id="closeViewer">×</button><img id="largePhoto" alt="사진 원본"><div class="caption" id="photoCaption"></div></div>
+<div id="dragHint" class="drag-hint">폴더로 이동</div>
+<script>
+'use strict';
+const DB='mycloset-local-v1', STORE='clothes', FOLDER_KEY='mycloset-folders-v2';
+let db, activeFolder='전체 사진', selected=new Set(), currentItems=[], visibleIds=[], objectUrls=[];
+const $=id=>document.getElementById(id);
+
+function readFolders(){try{const a=JSON.parse(localStorage.getItem(FOLDER_KEY)||'[]');return Array.isArray(a)?a:[]}catch{return []}}
+function writeFolders(a){localStorage.setItem(FOLDER_KEY,JSON.stringify(a))}
+function folders(){return ['전체 사진','분류 안 됨',...readFolders()]}
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    // v2로 열되 기존 clothes 저장소와 사진 데이터는 삭제하거나 초기화하지 않습니다.
+    const request=indexedDB.open(DB,2);
+    request.onupgradeneeded=event=>{
+      const database=event.target.result;
+      if(!database.objectStoreNames.contains(STORE)){
+        database.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
+      }
+    };
+    request.onsuccess=()=>{db=request.result;resolve()};
+    request.onerror=()=>reject(request.error);
+    request.onblocked=()=>reject(new Error('다른 MY CLOSET 창을 닫고 다시 열어 주세요.'));
+  });
+}
+function all(){return new Promise((resolve,reject)=>{const r=db.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+function updateItem(item){return new Promise((resolve,reject)=>{const r=db.transaction(STORE,'readwrite').objectStore(STORE).put(item);r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error)})}
+function put(item){return new Promise((resolve,reject)=>{const r=db.transaction(STORE,'readwrite').objectStore(STORE).add(item);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+function blobToDataURL(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob)})}
+function dataURLToBlob(data){const [head,b64]=data.split(',');const mime=(head.match(/data:(.*?);/)||[])[1]||'image/jpeg';const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return new Blob([arr],{type:mime})}
+
+function renderFolders(){
+  const el=$('folders');el.innerHTML='';
+  folders().forEach(name=>{
+    const b=document.createElement('button');b.className='folder'+(activeFolder===name?' active':'');b.textContent=name;b.dataset.folder=name;
+    b.onclick=()=>{activeFolder=name;selected.clear();render()};
+    b.ondragover=e=>{e.preventDefault();b.classList.add('drop-target')};
+    b.ondragleave=()=>b.classList.remove('drop-target');
+    b.ondrop=async e=>{e.preventDefault();b.classList.remove('drop-target');const id=Number(e.dataTransfer.getData('text/plain'));if(id)await moveIds([id],name)};
+    el.append(b);
+  });
+  $('folderTitle').textContent=activeFolder;
+}
+async function render(){
+  const allItems=await all();currentItems=allItems;
+  const query=$('search').value.toLowerCase();
+  let data=allItems.filter(x=>(activeFolder==='전체 사진'||(activeFolder==='분류 안 됨'?!x.folder||x.folder==='분류 안 됨':x.folder===activeFolder))&&(!query||((x.name||'').toLowerCase().includes(query))));
+  $('count').textContent=activeFolder==='전체 사진'?allItems.length:data.length;
+  renderFolders();objectUrls.forEach(u=>URL.revokeObjectURL(u));objectUrls=[];
+  const grid=$('items');grid.innerHTML='';
+  if(!data.length){grid.innerHTML='<div class="empty">이 폴더에는 사진이 없습니다.<br>‘＋ 여러 장 사진 추가’를 눌러 사진을 넣어주세요.</div>';visibleIds=[];updateSelectionButtons();return}
+  data.sort((a,b)=>(b.created||0)-(a.created||0));visibleIds=data.map(x=>x.id);
+  data.forEach(x=>{
+    const card=document.createElement('div');card.className='item'+(selected.has(x.id)?' selected':'');card.draggable=true;card.dataset.id=x.id;
+    const img=document.createElement('img');const url=URL.createObjectURL(x.photo);objectUrls.push(url);img.src=url;img.alt=x.name||'옷 사진';img.draggable=false;
+    img.onclick=()=>{if(!suppressClick)openViewer(x)};
+    const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(x.id);check.setAttribute('aria-label','사진 선택');
+    check.onclick=e=>e.stopPropagation();check.onchange=()=>{if(check.checked)selected.add(x.id);else selected.delete(x.id);card.classList.toggle('selected',check.checked);updateSelectionButtons()};
+    card.ondragstart=e=>{e.dataTransfer.setData('text/plain',String(x.id));e.dataTransfer.effectAllowed='move'};
+    addTouchDrag(card,x.id);
+    card.append(img,check);grid.append(card);
+  });
+  updateSelectionButtons();
+}
+function updateSelectionButtons(){$('moveSelected').disabled=selected.size===0;$('selectAll').textContent=visibleIds.length&&visibleIds.every(id=>selected.has(id))?'전체 선택 해제':'전체 선택'}
+async function moveIds(ids,destination){
+  const dest=destination==='전체 사진'?'분류 안 됨':destination;
+  for(const x of currentItems){if(ids.includes(x.id)){x.folder=dest;await updateItem(x)}}
+  selected.clear();activeFolder=destination==='전체 사진'?'전체 사진':dest;await render();
+}
+let suppressClick=false;
+function openViewer(x){$('largePhoto').src=URL.createObjectURL(x.photo);$('photoCaption').textContent=x.name||'MY CLOSET';$('viewer').classList.remove('hidden')}
+$('closeViewer').onclick=()=>{$('viewer').classList.add('hidden');$('largePhoto').src=''};
+$('viewer').onclick=e=>{if(e.target===$('viewer'))$('closeViewer').click()};
+$('chooseFiles').onclick=()=>$('photo').click();
+$('photo').onchange=async e=>{const files=Array.from(e.target.files||[]);if(!files.length)return;let added=0;try{for(const f of files){if(!f.type.startsWith('image/'))continue;await put({photo:f,name:f.name.replace(/\.[^.]+$/,''),folder:activeFolder==='전체 사진'?'분류 안 됨':activeFolder,created:Date.now()+added});added++}alert(added+'장의 사진을 추가했어요.')}catch(err){alert('사진 저장 중 문제가 생겼어요: '+err.message)}e.target.value='';render()};
+$('addFolder').onclick=()=>{const name=prompt('새 폴더 이름을 입력하세요.');if(!name)return;const n=name.trim();if(!n||['전체 사진','분류 안 됨'].includes(n)||folders().includes(n)){alert('사용할 수 없는 이름이거나 이미 있는 폴더입니다.');return}const a=readFolders();a.push(n);writeFolders(a);activeFolder=n;render()};
+$('renameFolder').onclick=()=>{if(['전체 사진','분류 안 됨'].includes(activeFolder)){alert('직접 만든 폴더를 선택한 뒤 이름을 변경해 주세요.');return}const n=prompt('새 폴더 이름',activeFolder);if(!n||!n.trim())return;const name=n.trim();if(folders().includes(name)){alert('이미 있는 폴더 이름입니다.');return}const old=activeFolder;writeFolders(readFolders().map(x=>x===old?name:x));(async()=>{for(const x of currentItems){if(x.folder===old){x.folder=name;await updateItem(x)}}activeFolder=name;render()})()};
+$('selectAll').onclick=()=>{if(visibleIds.length&&visibleIds.every(id=>selected.has(id))){visibleIds.forEach(id=>selected.delete(id))}else{visibleIds.forEach(id=>selected.add(id))}render()};
+$('cancelSelect').onclick=()=>{selected.clear();render()};
+$('moveSelected').onclick=async()=>{const choices=folders().filter(x=>x!=='전체 사진');const dest=prompt('이동할 폴더 이름을 입력하세요.\n'+choices.join(' / '));if(!dest)return;if(!choices.includes(dest)){alert('목록에 있는 폴더 이름을 정확히 입력해 주세요.');return}await moveIds([...selected],dest)};
+$('search').oninput=render;
+
+// 아이폰/아이패드용 길게 누르기 드래그. 약 0.4초 누른 후 폴더 위로 이동합니다.
+function addTouchDrag(card,id){
+  let timer=null, dragging=false, startX=0, startY=0, target=null;
+  const hint=$('dragHint');
+  card.addEventListener('touchstart',e=>{
+    if(e.target.tagName==='INPUT')return;
+    const t=e.touches[0];startX=t.clientX;startY=t.clientY;dragging=false;
+    timer=setTimeout(()=>{
+      dragging=true;suppressClick=true;card.classList.add('dragging');hint.style.display='block';
+      hint.textContent='폴더 위에 놓으세요';
+      if(navigator.vibrate)navigator.vibrate(35);
+    },420);
+  },{passive:true});
+  card.addEventListener('touchmove',e=>{
+    const t=e.touches[0];if(!dragging){if(Math.abs(t.clientX-startX)>12||Math.abs(t.clientY-startY)>12)clearTimeout(timer);return}
+    e.preventDefault();hint.style.left=t.clientX+'px';hint.style.top=t.clientY+'px';
+    const under=document.elementFromPoint(t.clientX,t.clientY);
+    const folder=under&&under.closest('.folder');
+    document.querySelectorAll('.folder.drop-target').forEach(el=>el.classList.remove('drop-target'));
+    target=folder||null;if(target){target.classList.add('drop-target');hint.textContent=target.dataset.folder+' 폴더로 이동'}
+    else hint.textContent='폴더 위에 놓으세요';
+  },{passive:false});
+  const finish=async()=>{
+    clearTimeout(timer);
+    if(dragging){
+      const destination=target&&target.dataset.folder;
+      card.classList.remove('dragging');hint.style.display='none';
+      document.querySelectorAll('.folder.drop-target').forEach(el=>el.classList.remove('drop-target'));
+      if(destination)await moveIds([id],destination);
+      setTimeout(()=>{suppressClick=false},350);
+    }
+    dragging=false;target=null;
+  };
+  card.addEventListener('touchend',finish);
+  card.addEventListener('touchcancel',finish);
+  card.addEventListener('contextmenu',e=>e.preventDefault());
+}
+$('exportBackup').onclick=async()=>{try{const items=await all();const payload={app:'MY CLOSET',version:2,created:new Date().toISOString(),folders:readFolders(),items:await Promise.all(items.map(async x=>({...x,photo:await blobToDataURL(x.photo)})))};const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='my-closet-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);alert('백업 파일을 만들었어요. 파일 앱의 다운로드 폴더를 확인해 주세요.')}catch(e){alert('백업 실패: '+e.message)}};
+$('importBackup').onchange=async e=>{const f=e.target.files[0];if(!f)return;if(!confirm('복원하면 현재 사진과 정보가 백업 파일 내용으로 교체됩니다. 현재 내용을 먼저 백업했나요?')){e.target.value='';return}try{const p=JSON.parse(await f.text());if(p.app!=='MY CLOSET'||!Array.isArray(p.items))throw Error('MY CLOSET 백업 파일이 아닙니다.');const tx=db.transaction(STORE,'readwrite'),s=tx.objectStore(STORE);s.clear();p.items.forEach(x=>s.add({...x,photo:dataURLToBlob(x.photo)}));tx.oncomplete=()=>{if(Array.isArray(p.folders))writeFolders(p.folders);alert('복원이 완료됐어요.');e.target.value='';activeFolder='전체 사진';render()};tx.onerror=()=>alert('복원 중 오류가 발생했어요.') }catch(err){alert('복원할 수 없어요: '+err.message);e.target.value=''}};
+openDB().then(render).catch(err=>alert('저장공간을 열 수 없어요: '+err.message+' 기존 앱과 같은 Safari 주소에서 열어 주세요.'));
+</script>
+<script>
+if("serviceWorker" in navigator){window.addEventListener("load",async()=>{try{const registration=await navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"});registration.update().catch(()=>{});}catch(error){console.warn("Service worker registration failed",error);}});}
+</script>
+</body>
+</html>
